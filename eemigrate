@@ -1,0 +1,27 @@
+# eemigrate Auto Complete Feature
+
+
+EEMIGAUTO()
+{
+        # Get Current Word
+        local CURRENT=${COMP_WORDS[COMP_CWORD]}
+
+        # Get Previous Word
+        local PREVIOUS=${COMP_WORDS[COMP_CWORD-1]}
+
+        # Use Word Twice In Auto Completion
+        local EECOMMON=${COMP_WORDS[COMP_CWORD-2]}
+
+        # List Of Suggested Words
+        case "$PREVIOUS" in
+
+                # List Of Suggested Words
+
+                eemigrate)
+                        COMPREPLY=( $(compgen -W "pull push" -- $CURRENT) )
+                        return 0
+                        ;;
+        esac
+}
+
+complete -F EEMIGAUTO eemigrate

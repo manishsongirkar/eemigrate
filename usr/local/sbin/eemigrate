@@ -1,0 +1,13 @@
+if [ "$1" = "pull" ]
+then
+
+	# Call Pull Method
+	echo -e "Pull Called successfully!"
+
+elif [ "$1" = "push" ]
+then
+
+	# Call Push Method
+	echo -e "Push Called successfully!"	
+
+fi
