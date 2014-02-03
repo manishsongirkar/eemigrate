@@ -18,6 +18,8 @@ SyncError()
 	exit 101
 }
 
+# Get rsync method in variable
+EEMIGMETHOD="$1"
 
 # Get Local Domain Name
 EEMIGLOCALINFO()
@@ -61,30 +63,13 @@ EEMIGREMOTEDETAILS()
 	fi
 
 	# Enter Destination Domain OR IP Address
-	read -p " Enter Destination IP / DOMAIN: " MIGREMOTEIP
+	read -p " Enter Destination DOMAIN/IP: " MIGREMOTEIP
 
 	# Check if Domain OR IP Address is empty
 	while [[ "$MIGREMOTEIP" == "" ]]
 	do
-		read -p " Enter Destination IP / DOMAIN: " MIGREMOTEIP
+		read -p " Enter Destination DOMAIN/IP: " MIGREMOTEIP
 	done
-
-	# Enter Destination ssh Password
-#	stty -echo
-#	read -p " Enter The Destination Password: " MIGREMOTEPASS
-#	stty echo
-#	echo
-
-	# Check if Destination ssh Password is Empty
-#	while [[ "$MIGREMOTEPASS" == "" ]]
-#	do
-#		stty -echo
-#		read -p " Enter The Destination Password: " MIGREMOTEPASS
-#		stty echo
-#		echo
-#	done
-
-#	echo "$MIGREMOTEPASS" > /tmp/pass_"$MIGREMOTEDOMAIN"
 
 	# Enter Destination Port
 	read -p " Enter Destination Port [22]: " MIGREMOTEPORT
@@ -111,18 +96,72 @@ EEMIGEXCLUDE()
 } # End of EEMIGEXCLUDE
 
 
+# Get Local Database Details
+EEMIGLOCALDB()
+{
+	# Get Local wp-config.php file path in MIGSRCCONFIG
+	MIGSRCCONFIG=/var/www/$MIGLOCALDOMAIN/wp-config.php
+
+	# Check If wp-config.php file exist or not
+	if [[ -f $MIGSRCCONFIG ]]
+	then
+		MIGDBEXPORT=y
+	elif [[ -f /var/www/$MIGLOCALDOMAIN/htdocs/wp-config.php ]]
+	then
+		MIGDBEXPORT=y
+		MIGSRCCONFIG=/var/www/$MIGLOCALDOMAIN/htdocs/wp-config.php
+	else
+		MIGDBEXPORT=n
+	fi
+
+	# MySQL Informatiom from wp-config.php file
+	MIGSRCDBNAME=$(grep DB_NAME $MIGSRCCONFIG | cut -d"'" -f4)
+	MIGSRCDBUSER=$(grep DB_USER $MIGSRCCONFIG | cut -d"'" -f4)
+	MIGSRCDBPASS=$(grep DB_PASS $MIGSRCCONFIG | cut -d"'" -f4)
+} # End of EEMIGLOCALDB
+
+
+# Get Remote Database Details
+EEMIGREMOTEDB()
+{
+	# Remove old wp-config.php from /tmp/ directory
+	rm -rf /tmp/wp-config.php
+
+	# Get Remote wp-config.php file path in MIGDESTCONFIG
+	rsync -dmavzh $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/{wp-config.php,htdocs/wp-config.php} /tmp/
+
+	# Rename wp-config file name to avoid conflict
+	mv /tmp/wp-config.php /tmp/$MIGREMOTEDOMAIN-wp-config.php
+
+	MIGDESTCONFIG=/tmp/$MIGREMOTEDOMAIN-wp-config.php
+
+	# Check If wp-config.php file exist or not
+	if [[ -f $MIGDESTCONFIG ]]
+	then
+		MIGDBEXPORT=y
+	else
+		MIGDBEXPORT=n
+	fi
+
+	# MySQL Informatiom from wp-config.php file
+	MIGDESTDBNAME=$(grep DB_NAME $MIGDESTCONFIG | cut -d"'" -f4)
+	MIGDESTDBUSER=$(grep DB_USER $MIGDESTCONFIG | cut -d"'" -f4)
+	MIGDESTDBPASS=$(grep DB_PASS $MIGDESTCONFIG | cut -d"'" -f4)
+} # End of EEMIGREMOTEDB
+
+
 # MySQL Export Function
 EEMIGMYSQLEXPORT()
 {
 	echo -e "\033[34m \n Taking MySQL Dump, Please Wait... \n \e[0m"
-	
-	if [[ "$1" == "push" ]]
+
+	if [[ "$EEMIGMETHOD" == "push" ]]
 	then
 		mysqldump --max_allowed_packet=512M -u $MIGSRCDBUSER -p$MIGSRCDBPASS $MIGSRCDBNAME > /var/www/$MIGLOCALDOMAIN/$MIGSRCDBNAME.sql || SyncError "Unable To Dump MySQL For $MIGSRCDBNAME"
-	elif [[ "$1" == "pull" ]]
+	elif [[ "$EEMIGMETHOD" == "pull" ]]
 	then
-		ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "mysqldump --max_allowed_packet=512M -u $MIGSRCDBUSER -p$MIGSRCDBPASS $MIGSRCDBNAME > /var/www/$MIGREMOTEDOMAIN/$MIGSRCDBNAME.sql" || SyncError "Unable To Dump MySQL For $MIGSRCDBNAME"
-		rsync -dmavzh  $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/$MIGSRCDBNAME.sql /var/www/$MIGLOCALDOMAIN/ || SyncError "Unable To Fetch $MIGSRCDBNAME.sql From $MIGREMOTEDOMAIN"
+		ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "mysqldump --max_allowed_packet=512M -u $MIGDESTDBUSER -p$MIGDESTDBPASS $MIGDESTDBNAME > /var/www/$MIGREMOTEDOMAIN/$MIGDESTDBNAME.sql" || SyncError "Unable To Dump MySQL For $MIGDESTDBNAME"
+		rsync -dmavzh  $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/$MIGDESTDBNAME.sql /var/www/$MIGLOCALDOMAIN/ || SyncError "Unable To Fetch $MIGDESTDBNAME.sql From $MIGREMOTEDOMAIN"
 	fi
 } # End of EEMIGMYSQLEXPORT
 
@@ -133,13 +172,13 @@ EEMIGMYSQLIMPORT()
 	# Import MySQL to Destination
 	echo -e "\033[34m \n Importing MySQL, Please Wait... \n \e[0m"
 
-	if [[ "$1" == "push" ]]
+	if [[ "$EEMIGMETHOD" == "push" ]]
 	then
-		rsync -dmavzh  /var/www/$MIGLOCALDOMAIN/$MIGSRCDBNAME.sql $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/ || SyncError "Unable To Sync MySQL to $MIGREMOTEDOMAIN"
-		ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "mysql -u $MIGSRCDBUSER -p$MIGSRCDBPASS $MIGSRCDBNAME < /var/www/$MIGREMOTEDOMAIN/$MIGSRCDBNAME.sql" || SyncError "Unable To Import MySQL On $MIGREMOTEDOMAIN"
-	elif [[ "$1" == "pull" ]]
+		rsync -dmavzh  /var/www/$MIGLOCALDOMAIN/$MIGSRCDBNAME.sql $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/ || SyncError "Unable To Send $MIGSRCDBNAME to $MIGREMOTEDOMAIN"
+		ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "mysql -u $MIGDESTDBUSER -p$MIGDESTDBPASS $MIGDESTDBNAME < /var/www/$MIGREMOTEDOMAIN/$MIGSRCDBNAME.sql" || SyncError "Unable To Import MySQL On $MIGREMOTEDOMAIN"
+	elif [[ "$EEMIGMETHOD" == "pull" ]]
 	then
-		mysql -u $MIGSRCDBUSER -p$MIGSRCDBPASS $MIGSRCDBNAME < /var/www/$MIGLOCALDOMAIN/$MIGSRCDBNAME.sql || SyncError "Unable To Import MySQL On $MIGLOCALDOMAIN"
+		mysql -u $MIGSRCDBUSER -p$MIGSRCDBPASS $MIGSRCDBNAME < /var/www/$MIGLOCALDOMAIN/$MIGDESTDBNAME.sql || SyncError "Unable To Import $MIGDESTDBNAME.sql On $MIGLOCALDOMAIN"
 	fi
 } # End of EEMIGMYSQLIMPORT
 
@@ -147,30 +186,113 @@ EEMIGMYSQLIMPORT()
 # Add WP_HOME and WP_SITEURL to wp-config.php file
 EEMIGUPDATECONFIG()
 {
-	if [[ "$1" == "push" ]]
+	if [[ "$EEMIGMETHOD" == "push" ]]
 	then
 
-		if ! grep -w -q WP_HOME MIGEXPORTCONFIG && ! grep -w -q WP_SITEURL MIGEXPORTCONFIG
+		if ! grep -w -q WP_HOME MIGDESTCONFIG && ! grep -w -q WP_SITEURL MIGDESTCONFIG
 		then
 			ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "echo -e \"\ndefine( 'WP_HOME', 'http://$MIGREMOTEDOMAIN' ); \ndefine( 'WP_SITEURL', 'http://$MIGREMOTEDOMAIN' ); \" >> /var/www/$MIGREMOTEDOMAIN/wp-config.php" || SyncError "Unable To Add WP_HOME and WP_SITEURL in /var/www/$MIGREMOTEDOMAIN/wp-config.php"
 			echo -e "Added WP_HOME and WP_SITEURL to /var/www/$MIGREMOTEDOMAIN/wp-config.php"
 		fi
 
-	elif [[ "$1" == "pull" ]]
+	elif [[ "$EEMIGMETHOD" == "pull" ]]
 	then
 
-		if ! grep -w -q WP_HOME MIGEXPORTCONFIG && ! grep -w -q WP_SITEURL MIGEXPORTCONFIG
+		if ! grep -w -q WP_HOME MIGSRCCONFIG && ! grep -w -q WP_SITEURL MIGSRCCONFIG
 		then
 			echo -e "\ndefine( 'WP_HOME', 'http://$MIGLOCALDOMAIN' ); \ndefine( 'WP_SITEURL', 'http://$MIGLOCALDOMAIN' );" >> /var/www/$MIGLOCALDOMAIN/wp-config.php || SyncError "Unable To Add WP_HOME and WP_SITEURL in /var/www/$MIGLOCALDOMAIN/wp-config.php"
-			echo -e "Added WP_HOME and WP_SITEURL to /var/www/$MIGREMOTEDOMAIN/wp-config.php"
+			echo -e "Added WP_HOME and WP_SITEURL to /var/www/$MIGLOCALDOMAIN/wp-config.php"
 		fi
 
 	fi
 } # End of EEMIGUPDATECONFIG
 
 
+# Database Processing
+EEMIGDBPROCESS()
+{
+	# Export and Import Database if wp-config file present
+	if [[ "$MIGDBEXPORT" == "y" ]]
+	then
+
+		# Export MySQL
+		EEMIGMYSQLEXPORT
+
+		# Ask for Import Database from Source to Destination
+		if [[ "$EEMIGMETHOD" == "push" ]]
+		then
+			read -p " Import Database from $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN (y/n) [y]: " EEMIGDBIMPORT
+		elif [[ "$EEMIGMETHOD" == "pull" ]]
+		then
+			read -p " Import Database from $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN (y/n) [y]: " EEMIGDBIMPORT
+		fi
+
+		if [[ "$EEMIGDBIMPORT" == "" ]]
+		then
+			# If Enter Is Pressed, Then Database Import = y
+			EEMIGDBIMPORT=y
+		fi
+
+		if [[ "$EEMIGDBIMPORT" == "y" ]]
+		then
+			# Import MySQL
+			EEMIGMYSQLIMPORT
+		else
+			echo -e "\033[31m User Denied to Import Database from $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN \n \e[0m" | tee -ai $MIGRATELOG
+		fi
+
+	fi
+} # End of EEMIGDBPROCESS
+
+
+# Webroot Migration
+EEMIGWEBROOT()
+{
+	# Start Webroot Migration if Final Permission is y
+	if [[ "$MIGPERMISSION" == "y" ]]
+	then
+
+		if [[ "$EEMIGMETHOD" == "push" ]]
+		then
+
+			echo -e "\033[34m Sync $MIGLOCALDOMAIN To $MIGREMOTEDOMAIN, Please Wait...  \e[0m"
+				
+			# Sync Local webroot with Remote server
+			rsync -avzh $EEMIGEXCLUDELIST --exclude="wp-config.php" /var/www/$MIGLOCALDOMAIN/htdocs $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/ || SyncError "Unable To Sync $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN"
+
+			echo -e "\033[34m \n http://$MIGLOCALDOMAIN/ Domain Successfully Migrated \n \e[0m"
+
+		elif [[ "$EEMIGMETHOD" == "pull" ]]
+		then
+
+			echo -e "\033[34m Sync $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN, Please Wait...  \e[0m"
+
+			# Sync Local webroot with Remote server
+			rsync -avzh $EEMIGEXCLUDELIST --exclude="wp-config.php" $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/htdocs /var/www/$MIGLOCALDOMAIN/  || SyncError "Unable To Sync $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN"
+
+			echo -e "\033[34m \n http://$MIGREMOTEDOMAIN/ Domain Successfully Migrated \n \e[0m"
+
+		fi
+
+		# Update Domain in wp-config.php file
+		EEMIGUPDATECONFIG
+
+		# Display Important Information After Completing migrate Process
+		echo -e "\033[34m \nIMPORTANT: Don't Forget To Use Search & Replace Plugin \n \e[0m"
+
+		# Remove config file from /tmp/ directory
+		rm -f /tmp/wp-config.php /tmp/$MIGREMOTEDOMAIN-wp-config.php
+
+	else
+		# User Denied Messages
+		echo
+		echo -e "\033[31m User Denied site Migration!!! \e[0m" | tee -ai $MIGRATELOG
+	fi
+} # End of EEMIGWEBROOT
+
+
 # EasyEngine Domain Migration
-if [[ "$1" == "push" ]]
+if [[ "$EEMIGMETHOD" == "push" ]]
 then
 
 	# eemigrate push local.com remote.com
@@ -193,22 +315,7 @@ then
 
 	EEMIGEXCLUDE
 
-	# Get wp-config.php file path in MIGEXPORTCONFIG
-	MIGEXPORTCONFIG=/var/www/$MIGLOCALDOMAIN/wp-config.php
-
-	# Check If wp-config.php file exist or not
-	if [[ -f $MIGEXPORTCONFIG ]]
-	then
-		MIGDBEXPORT=y
-	elif [[ -f /var/www/$MIGLOCALDOMAIN/htdocs/wp-config.php ]]
-	then
-		MIGDBEXPORT=y
-		MIGEXPORTCONFIG=/var/www/$MIGLOCALDOMAIN/htdocs/wp-config.php
-	else
-		MIGDBEXPORT=n
-	fi
-
-elif [[ "$1" == "pull" ]]
+elif [[ "$EEMIGMETHOD" == "pull" ]]
 then
 
 	# eemigrate pull remote.com local.com
@@ -231,73 +338,22 @@ then
 
 	EEMIGEXCLUDE
 
-	# Get wp-config.php file path in MIGEXPORTCONFIG
-	rsync -dmavzh  --include "/*" --include "wp-config.php" --exclude "*" $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN /tmp/ || SyncError "Unable To Fetch wp-config.php From $MIGREMOTEDOMAIN"
-
-	# Rename wp-config file name to avoid conflict
-	if [[ -d /tmp/htdocs ]]
-	then
-		mv /tmp/htdocs/wp-config.php /tmp/$MIGREMOTEDOMAIN-wp-config.php
-		rm -rf /tmp/htdocs
-	else
-		mv /tmp/wp-config.php /tmp/$MIGREMOTEDOMAIN-wp-config.php
-	fi
-
-	MIGEXPORTCONFIG=/tmp/$MIGREMOTEDOMAIN-wp-config.php
-
-	# Check If wp-config.php file exist or not
-	if [[ -f $MIGEXPORTCONFIG ]]
-	then
-		MIGDBEXPORT=y
-	else
-		MIGDBEXPORT=n
-	fi
-
 fi
 
-# MySQL Informatiom from wp-config.php file
-MIGSRCDBNAME=$(grep DB_NAME $MIGEXPORTCONFIG | cut -d"'" -f4)
-MIGSRCDBUSER=$(grep DB_USER $MIGEXPORTCONFIG | cut -d"'" -f4)
-MIGSRCDBPASS=$(grep DB_PASS $MIGEXPORTCONFIG | cut -d"'" -f4)
+# Get Local DB Details
+EEMIGLOCALDB
 
+# Get Remote Database Details
+EEMIGREMOTEDB
 
-# Export and Import Database if wp-config file present
-if [[ "$MIGDBEXPORT" == "y" ]]
-then
-
-	# Export MySQL
-	EEMIGMYSQLEXPORT
-
-	# Ask for Import Database from Source to Destination
-	if [[ "$1" == "push" ]]
-	then
-		read -p " Import Database from $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN (y/n) [y]: " EEMIGDBIMPORT
-	elif [[ "$1" == "pull" ]]
-	then
-		read -p " Import Database from $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN (y/n) [y]: " EEMIGDBIMPORT
-	fi
-
-	if [[ "$EEMIGDBIMPORT" == "" ]]
-	then
-		# If Enter Is Pressed, Then Database Import = y
-		EEMIGDBIMPORT=y
-	fi
-
-	if [[ "$EEMIGDBIMPORT" == "y" ]]
-	then
-		# Import MySQL
-		EEMIGMYSQLIMPORT
-	else
-		echo -e "\033[31m User Denied to Import Database from $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN \n \e[0m" | tee -ai $MIGRATELOG
-	fi
-
-fi
+# Process Database Task
+EEMIGDBPROCESS
 
 # Take Final Permission for Site Migration
-if [[ "$1" == "push" ]]
+if [[ "$EEMIGMETHOD" == "push" ]]
 then
 	read -p " Are You Sure To migrate $MIGLOCALDOMAIN To $MIGREMOTEDOMAIN (y/n) [y]: " MIGPERMISSION
-elif [[ "$1" == "pull" ]]
+elif [[ "$EEMIGMETHOD" == "pull" ]]
 then
 	read -p " Are You Sure To migrate $MIGREMOTEDOMAIN To $MIGLOCALDOMAIN (y/n) [y]: " MIGPERMISSION
 fi
@@ -308,43 +364,5 @@ then
 	MIGPERMISSION=y
 fi
 
-# Start Webroot Migration if Final Permission is y
-if [[ "$MIGPERMISSION" == "y" ]]
-then
-
-	if [[ "$1" == "push" ]]
-	then
-
-		echo -e "\033[34m Sync $MIGLOCALDOMAIN To $MIGREMOTEDOMAIN, Please Wait...  \e[0m"
-			
-		# Sync Local webroot with Remote server
-		rsync -avzh $EEMIGEXCLUDELIST --exclude="wp-config.php" /var/www/$MIGLOCALDOMAIN/htdocs $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/ || SyncError "Unable To Sync $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN"
-
-		echo -e "\033[34m \n http://$MIGREMOTEDOMAIN/ Domain Successfully Migrated \n \e[0m"
-
-	elif [[ "$1" == "pull" ]]
-	then
-
-		echo -e "\033[34m Sync $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN, Please Wait...  \e[0m"
-
-		# Sync Local webroot with Remote server
-		rsync -avzh $EEMIGEXCLUDELIST --exclude="wp-config.php" $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/htdocs /var/www/$MIGLOCALDOMAIN/  || SyncError "Unable To Sync $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN"
-
-		echo -e "\033[34m \n http://$MIGREMOTEDOMAIN/ Domain Successfully Migrated \n \e[0m"
-
-	fi
-
-	# Update Domain in wp-config.php file
-	EEMIGUPDATECONFIG
-
-	# Display Important Information After Completing migrate Process
-	echo -e "\033[34m \nIMPORTANT: Don't Forget To Use Search & Replace Plugin \n \e[0m"
-
-	# Remove config file from /tmp/ directory
-	rm -f /tmp/$MIGREMOTEDOMAIN-wp-config.php /tmp/pass_"$MIGREMOTEDOMAIN"
-
-else
-	# User Denied Messages
-	echo
-	echo -e "\033[31m User Denied site migration from $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN \e[0m" | tee -ai $MIGRATELOG
-fi
+# Webroot Migration
+EEMIGWEBROOT
