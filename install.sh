@@ -23,7 +23,7 @@ echo -e "\033[34mCloning eemigrate addon, Please Wait...\e[0m" | tee -ai $EEINST
 rm -rf /tmp/eemigrate &>> /dev/null
 
 # Clone eemigrate Repository
-git clone git://github.com/manishsongirkar/eemigrate.git /tmp/eemigrate &>> $EEINSTALLLOG || SyncError( "Unable To Clone eemigrate"
+git clone git://github.com/manishsongirkar/eemigrate.git /tmp/eemigrate &>> $EEINSTALLLOG || SyncError "Unable To Clone eemigrate"
 
 # Install eemigrate
 echo -e "\033[34mInstalling eemigrate addon, Please Wait...\e[0m" | tee -ai $EEINSTALLLOG
