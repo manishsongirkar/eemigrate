@@ -91,8 +91,11 @@ EEMIGEXCLUDE()
 
 	for i in $EEMIGEXCLUDEINPUT
 	do
-		EEMIGEXCLUDELIST="$EEMIGEXCLUDELIST --exclude \"$i\""
+		MIGEXCLUDELIST="$MIGEXCLUDELIST --exclude=$i"
 	done
+
+	# Append wp-config.php file in exclude list
+	EEMIGEXCLUDELIST="$MIGEXCLUDELIST --exclude=wp-config.php"
 } # End of EEMIGEXCLUDE
 
 
@@ -235,7 +238,7 @@ EEMIGUPDATECONFIG()
 		if ! grep -w -q WP_HOME $MIGDESTCONFIG && ! grep -w -q WP_SITEURL $MIGDESTCONFIG
 		then
 			echo -e "Adding WP_HOME and WP_SITEURL Details to /var/www/$MIGREMOTEDOMAIN/wp-config.php"
-			ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "echo -e \"\ndefine( 'WP_HOME', 'http://$MIGREMOTEDOMAIN' ); \ndefine( 'WP_SITEURL', 'http://$MIGREMOTEDOMAIN' ); \" >> /var/www/$MIGREMOTEDOMAIN/wp-config.php" || SyncError "Unable To Add WP_HOME and WP_SITEURL in /var/www/$MIGREMOTEDOMAIN/wp-config.php"
+			ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "printf \"\ndefine( 'WP_HOME', 'http://$MIGREMOTEDOMAIN' ); \ndefine( 'WP_SITEURL', 'http://$MIGREMOTEDOMAIN' ); \" >> /var/www/$MIGREMOTEDOMAIN/wp-config.php" || SyncError "Unable To Add WP_HOME and WP_SITEURL in /var/www/$MIGREMOTEDOMAIN/wp-config.php"
 		fi
 
 	elif [[ "$EEMIGMETHOD" == "pull" ]]
@@ -244,7 +247,7 @@ EEMIGUPDATECONFIG()
 		if ! grep -w -q WP_HOME $MIGSRCCONFIG && ! grep -w -q WP_SITEURL $MIGSRCCONFIG
 		then
 			echo -e "Adding WP_HOME and WP_SITEURL Details to /var/www/$MIGLOCALDOMAIN/wp-config.php"
-			echo -e "\ndefine( 'WP_HOME', 'http://$MIGLOCALDOMAIN' ); \ndefine( 'WP_SITEURL', 'http://$MIGLOCALDOMAIN' );" >> /var/www/$MIGLOCALDOMAIN/wp-config.php || SyncError "Unable To Add WP_HOME and WP_SITEURL in /var/www/$MIGLOCALDOMAIN/wp-config.php"
+			printf "\ndefine( 'WP_HOME', 'http://$MIGLOCALDOMAIN' ); \ndefine( 'WP_SITEURL', 'http://$MIGLOCALDOMAIN' );" >> /var/www/$MIGLOCALDOMAIN/wp-config.php || SyncError "Unable To Add WP_HOME and WP_SITEURL in /var/www/$MIGLOCALDOMAIN/wp-config.php"
 		fi
 
 	fi
@@ -262,9 +265,9 @@ EEMIGWEBROOT()
 		then
 
 			echo -e "\033[34m Sync $MIGLOCALDOMAIN To $MIGREMOTEDOMAIN, Please Wait...  \e[0m"
-				
+
 			# Sync Local webroot with Remote server
-			rsync -avzh $EEMIGEXCLUDELIST --exclude="wp-config.php" /var/www/$MIGLOCALDOMAIN/htdocs $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/ || SyncError "Unable To Sync $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN"
+			rsync -avzh $EEMIGEXCLUDELIST /var/www/$MIGLOCALDOMAIN/htdocs $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/ || SyncError "Unable To Sync $MIGLOCALDOMAIN to $MIGREMOTEDOMAIN"
 
 			echo -e "\033[34m \n http://$MIGLOCALDOMAIN/ Domain Successfully Migrated \n \e[0m"
 
@@ -274,7 +277,7 @@ EEMIGWEBROOT()
 			echo -e "\033[34m Sync $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN, Please Wait...  \e[0m"
 
 			# Sync Local webroot with Remote server
-			rsync -avzh $EEMIGEXCLUDELIST --exclude="wp-config.php" $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/htdocs /var/www/$MIGLOCALDOMAIN/  || SyncError "Unable To Sync $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN"
+			rsync -avzh $EEMIGEXCLUDELIST $MIGREMOTEUSER@$MIGREMOTEIP:/var/www/$MIGREMOTEDOMAIN/htdocs /var/www/$MIGLOCALDOMAIN/  || SyncError "Unable To Sync $MIGREMOTEDOMAIN to $MIGLOCALDOMAIN"
 
 			echo -e "\033[34m \n http://$MIGREMOTEDOMAIN/ Domain Successfully Migrated \n \e[0m"
 
