@@ -1,9 +1,7 @@
 eemigrate
 =========
 
-EasyEngine (ee) Site Migration Addon. Using this addon user (Sudo Privilege User) can migrate site from local to remote and remote to local server.
-
-After site migration, you will need to update domain name in URL structure. You can use [Search and Replace](http://wordpress.org/plugins/search-and-replace/) plugin to update domain name.
+EasyEngine (ee) Site Migration Addon. Using this addon user (Sudo Privilege User) can migrate site from local to remote and remote to local server. Also using wp-cli command, it will replace strings in database itself.
 
 #### Setup eemigrate addon
 ```bash
@@ -26,3 +24,5 @@ Site Migrate from `Remote Server` to `Local System`
 ```bash
 eemigrate pull example-remote.com example-local.com
 ```
+#### Dependency
+Make sure [WP-CLI](http://wp-cli.org/) is installed on Local and Remote server, as its used for Search and Replace strings in Database.

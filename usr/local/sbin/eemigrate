@@ -184,10 +184,17 @@ EEMIGMYSQLIMPORT()
 
 		echo -e "\033[34m \n Importing Database to Remote Server, Please Wait... \n \e[0m"
 		ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "mysql -u $MIGDESTDBUSER -p$MIGDESTDBPASS $MIGDESTDBNAME < /var/www/$MIGREMOTEDOMAIN/$MIGSRCDBNAME.sql" || SyncError "Unable To Import MySQL On $MIGREMOTEDOMAIN"
+
+		echo -e "\033[34m \n Replacing site URL's in Database, Please Wait... \n \e[0m"
+		ssh $MIGREMOTEUSER@$MIGREMOTEIP -p $MIGREMOTEPORT "cd /var/www/$MIGREMOTEDOMAIN/htdocs/ && wp search-replace $MIGLOCALDOMAIN $MIGREMOTEDOMAIN &>> /dev/null" || SyncError "Unable To Replace Site URL's in Database"
+
 	elif [[ "$EEMIGMETHOD" == "pull" ]]
 	then
 		echo -e "\033[34m \n Importing Database, Please Wait... \n \e[0m"
 		mysql -u $MIGSRCDBUSER -p$MIGSRCDBPASS $MIGSRCDBNAME < /var/www/$MIGLOCALDOMAIN/$MIGDESTDBNAME.sql || SyncError "Unable To Import $MIGDESTDBNAME.sql On $MIGLOCALDOMAIN"
+
+		echo -e "\033[34m \n Replacing site URL's in Database, Please Wait... \n \e[0m"
+		cd /var/www/$MIGLOCALDOMAIN/htdocs/ && wp search-replace $MIGREMOTEDOMAIN $MIGLOCALDOMAIN &>> /dev/null || SyncError "Unable To Replace Site URL's in Database"
 	fi
 } # End of EEMIGMYSQLIMPORT
 
@@ -285,9 +292,6 @@ EEMIGWEBROOT()
 
 		# Update Domain in wp-config.php file
 		EEMIGUPDATECONFIG
-
-		# Display Important Information After Completing migrate Process
-		echo -e "\033[34m \nIMPORTANT: Don't Forget To Use Search & Replace Plugin \n \e[0m"
 
 		# Remove config file from /tmp/ directory
 		rm -f /tmp/wp-config.php /tmp/$MIGREMOTEDOMAIN-wp-config.php
